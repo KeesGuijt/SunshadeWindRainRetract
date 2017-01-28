@@ -3,7 +3,7 @@ Domotica Sun shade
 
 This unit monitors windspeed and percipitaion. If above set levels, a sun shade wil be retracted to prevent damage from mechnical loads and moisture.
 
-Add-on for Alecto WS-3500 weather station.
+Add-on for Alecto WS-4500 weather station.
 
 Units:
 - Alecto WS-4500 weather station
