@@ -6,10 +6,11 @@ This unit monitors windspeed and percipitaion. If above set levels, a sun shade 
 Add-on for Alecto WS-3500 weather station.
 
 Units:
-- Alecto WS-3500 weather station
+- Alecto WS-4500 weather station
+- Buitenunit Ws-3500/4500 +WS-3500705
 - Arduino Nano v3
 - RF module 433.42MHz
-- Rain detector
+- Rain detector 
 - Sun shade (Somfy controlled)
 
 
