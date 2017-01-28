@@ -1,7 +1,7 @@
 # SunshadeWindRainRetract
 Domotica Sun shade
 
-This unit monitors windspeed and percipitaion. If above set levels, a sun shade wil be retracted to prevent damage from mechnical loads and moisture.
+This unit monitors windspeed and precipitation. If above set levels, a sun shade wil be retracted to prevent damage from mechnical loads and moisture.
 
 Add-on for Alecto WS-4500 weather station.
 
