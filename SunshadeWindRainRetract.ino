@@ -25,9 +25,17 @@ const byte reverse_bits_lookup[] = {
 };
 
 int windGust;
-bool windGustStored;
+float windGustKmh;
+int windGustOld;
+float avgPeakKmh;
+int avgPeakKmhAge;
+//bool windGustStored;
 int windAverage;
-bool windAverageStored;
+float windAverageKmh;
+int windAverageOld;
+float gustPeakKmh;
+int gustPeakKmhAge;
+//bool windAverageStored;
 
 class DecodeOOK {
   protected:
@@ -432,6 +440,8 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
           windAverage += ((data[i] & 0x04) << 3);   //      2           2      5
           windAverage += ((data[i] & 0x02) << 5);   //      1           1      6
           windAverage += ((data[i] & 0x01) << 7);   //      0           0      7
+          windAverageKmh = float(windAverage) / 5.0 * 3.6 * 2.5; //personal scaling // 0.2 m/s to km/h, compensate 3* for alt 
+          /*
           if (not (windAverageStored))
           {
             //Serial.print(data[i] >> 4, HEX);
@@ -443,6 +453,7 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
             //Serial.print( "\n" );
             windAverageStored = true;
           }
+          */
         }
         else
         {
@@ -457,7 +468,8 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
           windGust += ((data[i] & 0x04) << 3);   //      2           2      5
           windGust += ((data[i] & 0x02) << 5);   //      1           1      6
           windGust += ((data[i] & 0x01) << 7);   //      0           0      7
-          if (not (windGustStored))
+          windGustKmh = float(windGust) / 5.0 * 3.6 * 2.5;  // 0.2 m/s to km/h, compensate 3* for alt )
+          /*if (not (windGustStored))
           {
             //Serial.print(data[i] >> 4, HEX);
             //Serial.print(data[i] & 0x0F, HEX);
@@ -466,7 +478,8 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
             //Serial.print(windGust / 5 * 3.6);
             //Serial.print( "\n" );
             windGustStored = true;
-          }
+          } 
+          */
         } //68
       }
     } //for
@@ -625,7 +638,8 @@ void BuildFrame(byte *frame, byte button) {
     Serial.print(frame[i], HEX); Serial.print(" ");
   }
   Serial.println("");
-  Serial.print("Rolling Code  : "); Serial.println(code);
+  Serial.print("Rolling Code  : "); 
+  Serial.println(code);
   EEPROM.put(EEPROM_ADDRESS, code + 1); //  We store the value of the rolling code in the
   // EEPROM. It should take up to 2 adresses but the
   // Arduino function takes care of it.
@@ -763,44 +777,69 @@ void loop () {
         //digitalClockDisplay();
         reportSerial("VENT", ventus);
         //			ventus1=ventus;
-        //if ( windAverageStored and windGustStored )
+
+        if ( (windAverage != windAverageOld) || (windGust != windGustOld) )
         {
           digitalClockDisplay();
           Serial.print(' ');
-          Serial.print('a');
-          Serial.print(windAverage / 5.0 * 3.6 * 2.5);  // 0.2 m/s to km/h, compensate 3* for alt )
-          Serial.print(' ');
-          Serial.print('g');
-          Serial.print(windGust / 5.0 * 3.6 * 2.5 - 3.6);  // 0.2 m/s to km/h, compensate 2* for alt )
-          
-          if( (windGust / 5.0 * 3.6 * 2.5 - 3.6) > 30) {      //km/h trigger
-             Serial.print(" Retracting (Wind)...."); // Somfy is a French company, after all.
-             BuildFrame(frame, HAUT);
-          }
-          
+          Serial.print("Average: ");
+          Serial.print(windAverageKmh); 
+		  Serial.print(' ');
+          Serial.print("Gust: ");
+          Serial.print(windGustKmh); 
+
           //delay(3000);   // read each once
-          windAverageStored = false;
-          windGustStored = false;
-		  if (!digitalRead(2))
-		  {
-		    Serial.print(" Raining");
-		    
-            Serial.print(" Retracting (Rain)...."); // Somfy is a French company, after all.
-            BuildFrame(frame, HAUT);
-		    //delay(1000);
-          }         
+          //windAverageStored = false;
+          //windGustStored = false;
+          if (avgPeakKmh < windAverageKmh)
+          {
+            avgPeakKmh = windAverageKmh;
+          }
+          Serial.print(' ');
+          Serial.print("  Average Peak: ");
+          Serial.print(avgPeakKmh);  
+
+          if (gustPeakKmh < windGustKmh)
+          {
+            gustPeakKmh = windGustKmh;
+	        if ( gustPeakKmh > 30) {     //km/h trigger
+	          Serial.print(" Retracting (Wind)...."); // Somfy is a French company, after all.
+	          BuildFrame(frame, HAUT);
+	        }
+	        gustPeakKmhAge = 0;
+          }
+          else
+          {
+		  	gustPeakKmhAge++;
+		  	if (gustPeakKmhAge > 20)  // To do: need 30 min later
+		  	{
+			  gustPeakKmhAge -= gustPeakKmhAge/10;  // start lowering peak value to find a new, lower peak
+			}
+		  }
+          Serial.print(' ');
+          Serial.print("Gust Peak: ");
+          Serial.print(gustPeakKmh); 
+          
 
           Serial.println( " " );
+        }
+        windAverage = windAverageOld;
+        windGustOld = windGust;
       }
+      if (!digitalRead(2))
+      {
+        Serial.print(" Retracting (Rain)...."); // Somfy is a French company, after all.
+        BuildFrame(frame, HAUT);
+        //delay(1000);
+      }
+      if (fineOffset.nextPulse(p))
+        reportSerial("FINE", fineOffset);
+      if (mandolyn.nextPulse(p))
+        reportSerial("MAND", mandolyn);
     }
-    if (fineOffset.nextPulse(p))
-      reportSerial("FINE", fineOffset);
-    if (mandolyn.nextPulse(p))
-      reportSerial("MAND", mandolyn);
-  }
 
 
-  //read the rainserver as digital input
+    //read the rainserver as digital input
 
   }
 }
