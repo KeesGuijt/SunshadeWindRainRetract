@@ -813,7 +813,7 @@ void loop () {
 		  	gustPeakKmhAge++;
 		  	if (gustPeakKmhAge > 20)  // To do: need 30 min later
 		  	{
-			  gustPeakKmhAge -= gustPeakKmhAge/10;  // start lowering peak value to find a new, lower peak
+			  gustPeakKmh -= gustPeakKmh/10;  // start lowering peak value to find a new, lower peak
 			}
 		  }
           Serial.print(' ');
