@@ -1,3 +1,11 @@
+/*
+
+    This unit monitors windspeed and precipitation. If above set levels, a sun shade will be retracted to prevent damage from mechanical loads
+	and moisture.
+    Add-on for Alecto WS-4500 weather station.
+
+*/
+
 #include <Time.h>
 #include <TimeLib.h>
 
@@ -18,6 +26,7 @@ int minSec = 0;
 
 #define PORT 2
 #define RAINSENSOR  A6
+#define ResetSuppressPin 12
 
 const byte reverse_bits_lookup[] = {
   0x0, 0x8, 0x4, 0xC, 0x2, 0xA, 0x6, 0xE,
@@ -34,7 +43,7 @@ int windAverage;
 float windAverageKmh;
 int windAverageOld;
 float gustPeakKmh;
-int gustPeakKmhAge;
+unsigned int gustPeakKmhTimeStored;
 //bool windAverageStored;
 
 class DecodeOOK {
@@ -98,7 +107,7 @@ class DecodeOOK {
 
 };
 
-// 433 MHz decoders
+// 433 MHz decoders for weather stations
 
 
 class OregonDecoderV2 : public DecodeOOK {
@@ -440,10 +449,10 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
           windAverage += ((data[i] & 0x04) << 3);   //      2           2      5
           windAverage += ((data[i] & 0x02) << 5);   //      1           1      6
           windAverage += ((data[i] & 0x01) << 7);   //      0           0      7
-          windAverageKmh = float(windAverage) / 5.0 * 3.6 * 2.5; //personal scaling // 0.2 m/s to km/h, compensate 3* for alt 
+          windAverageKmh = float(windAverage) / 5.0 * 3.6 * 2.5; //personal scaling // 0.2 m/s to km/h, compensate 3* for alt
           /*
-          if (not (windAverageStored))
-          {
+            if (not (windAverageStored))
+            {
             //Serial.print(data[i] >> 4, HEX);
             //Serial.print(data[i] & 0x0F, HEX);
             //digitalClockDisplay();
@@ -452,7 +461,7 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
             //Serial.print(windAverage / 5 * 3.6);
             //Serial.print( "\n" );
             windAverageStored = true;
-          }
+            }
           */
         }
         else
@@ -470,7 +479,7 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
           windGust += ((data[i] & 0x01) << 7);   //      0           0      7
           windGustKmh = float(windGust) / 5.0 * 3.6 * 2.5;  // 0.2 m/s to km/h, compensate 3* for alt )
           /*if (not (windGustStored))
-          {
+            {
             //Serial.print(data[i] >> 4, HEX);
             //Serial.print(data[i] & 0x0F, HEX);
             //Serial.print(' ');
@@ -478,7 +487,7 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
             //Serial.print(windGust / 5 * 3.6);
             //Serial.print( "\n" );
             windGustStored = true;
-          } 
+            }
           */
         } //68
       }
@@ -520,17 +529,42 @@ void printDigits(int digits) {
 }
 
 
-void processSyncMessage() {
+void processMessage() {
   unsigned long pctime;
   const unsigned long DEFAULT_TIME = 1357041600; // Jan 1 2013
 
-  if (Serial.find(TIME_HEADER)) {
+  //int waitTime = 0;
+  unsigned long controlCode = 0;
+
+  const char *timeHeaderUc = "T";// Header tag for serial time sync message
+  const char *timeHeaderLc = "t";// Header tag for serial time sync message
+  const char *commandHeaderUc = "C";// Header tag for serial device command message
+  const char *commandHeaderLc = "c";// Header tag for serial device command message
+
+  char *header;
+  *header = Serial.read();
+
+  if ( (*header == *timeHeaderUc) || (*header == *timeHeaderLc) )
+  {
+    Serial.print("Time received from PC: ");
     pctime = Serial.parseInt();
     if ( pctime >= DEFAULT_TIME) { // check the integer is a valid time (greater than Jan 1 2013)
       setTime(pctime); // Sync Arduino clock to the time received on the serial port
     }
   }
+  if ( (*header == *commandHeaderUc) || (*header == *commandHeaderLc) )
+  {
+    controlCode = Serial.parseInt();
+    if ( controlCode == 101 )
+    {
+      pinMode(ResetSuppressPin, INPUT);  //pulling the resetpin down is not a good idea....
+      digitalWrite(ResetSuppressPin, 0); // set the ResetSuppressPin OFF
+      Serial.print("ResetSuppressPin off\n");
+      Serial.println(controlCode);
+    }
+  }
 }
+
 
 time_t requestSync()
 {
@@ -540,10 +574,7 @@ time_t requestSync()
 
 
 
-
-
-
-/*   This sketch allows you to emulate a Somfy RTS or Simu HZ remote.
+/*   This part allows you to emulate a Somfy RTS or Simu HZ remote.
    If you want to learn more about the Somfy RTS protocol, check out https://pushstack.wordpress.com/somfy-rts-protocol/
 
    The rolling code will be stored in EEPROM, so that you can power the Arduino off.
@@ -565,7 +596,7 @@ time_t requestSync()
 */
 
 #include <EEPROM.h>
-#define PORT_RF 3 // DigitalPin 
+#define PORT_RF 3 // DigitalPin for Somfy
 
 #define SYMBOL 640
 #define HAUT 0x2
@@ -638,7 +669,7 @@ void BuildFrame(byte *frame, byte button) {
     Serial.print(frame[i], HEX); Serial.print(" ");
   }
   Serial.println("");
-  Serial.print("Rolling Code  : "); 
+  Serial.print("Rolling Code  : ");
   Serial.println(code);
   EEPROM.put(EEPROM_ADDRESS, code + 1); //  We store the value of the rolling code in the
   // EEPROM. It should take up to 2 adresses but the
@@ -689,6 +720,7 @@ void SendCommand(byte *frame, byte sync) {
   delayMicroseconds(30415); // Inter-frame silence
 }
 
+//end of Somfy code
 
 
 
@@ -697,6 +729,9 @@ void SendCommand(byte *frame, byte sync) {
 void setup () {
   Serial.begin(9600);
   Serial.print("[WR]\n");
+
+  digitalWrite(ResetSuppressPin, 1);// set the ResetSuppressPin ON
+  pinMode(ResetSuppressPin, OUTPUT);
 
 #if !defined(__AVR_ATmega1280__)
   pinMode(13 + PORT, INPUT);	// use the AIO pin
@@ -711,7 +746,7 @@ void setup () {
   ADMUX = PORT - 1;
 #else
 
-  --not used --
+  //--not used --
 
   attachInterrupt(1, ext_int_1, CHANGE);
 
@@ -721,8 +756,7 @@ void setup () {
 
 
   //Serial.begin(9600);
-  while (!Serial) ; // Needed for Leonardo only
-  pinMode(13, OUTPUT);
+  //while (!Serial) ; // Needed for Leonardo only
 
   //configure pin2 as an input and enable the internal pull-up resistor
   pinMode(2, INPUT_PULLUP);
@@ -730,9 +764,6 @@ void setup () {
 
   setSyncProvider( requestSync);	//set function to call when sync required
   Serial.println("Waiting for sync message");
-
-
-
 
   //Somfy
   pinMode(PORT_RF, OUTPUT);  //Pin  an output
@@ -743,23 +774,21 @@ void setup () {
   }
   Serial.print("Simulated remote number : "); Serial.println(REMOTE, HEX);
   Serial.print("Current rolling code    : "); Serial.println(rollingCode);
-
-
-
 }
 
 
 void loop () {
 
+  unsigned long timeoutTime = now(); //Somfy command can only be sent once in 15 min
+
   if (Serial.available()) {
-    processSyncMessage();
+    processMessage();
   }
 
   cli();
   word p = pulse;
   pulse = 0;
   sei();
-
   int secondOld = 0;
 
   if (p != 0) {
@@ -783,10 +812,10 @@ void loop () {
           digitalClockDisplay();
           Serial.print(' ');
           Serial.print("Average: ");
-          Serial.print(windAverageKmh); 
-		  Serial.print(' ');
+          Serial.print(windAverageKmh);
+          Serial.print(' ');
           Serial.print("Gust: ");
-          Serial.print(windGustKmh); 
+          Serial.print(windGustKmh);
 
           //delay(3000);   // read each once
           //windAverageStored = false;
@@ -797,40 +826,46 @@ void loop () {
           }
           Serial.print(' ');
           Serial.print("  Average Peak: ");
-          Serial.print(avgPeakKmh);  
+          Serial.print(avgPeakKmh);
 
           if (gustPeakKmh < windGustKmh)
           {
             gustPeakKmh = windGustKmh;
-	        if ( gustPeakKmh > 30) {     //km/h trigger
-	          Serial.print(" Retracting (Wind)...."); // Somfy is a French company, after all.
-	          BuildFrame(frame, HAUT);
-	        }
-	        gustPeakKmhAge = 0;
+            gustPeakKmhTimeStored = now();
+            if ( gustPeakKmh > 30 ) {     //km/h trigger
+              Serial.print(" Too much wind ");
+              if ( timeoutTime < now() )
+              {
+                Serial.print(" Retracting (Wind)....");
+                BuildFrame(frame, HAUT);   // Somfy is a French company, after all.
+                timeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
+              }
+            }
           }
           else
           {
-		  	gustPeakKmhAge++;
-		  	if (gustPeakKmhAge > 20)  // To do: need 30 min later
-		  	{
-			  gustPeakKmh -= gustPeakKmh/10;  // start lowering peak value to find a new, lower peak
-			}
-		  }
+            if ( (gustPeakKmhTimeStored + 30 * 60) > now() ) //30 min
+            {
+              gustPeakKmh -= 1; // start lowering peak value to find a new, lower peak
+            }
+          }
           Serial.print(' ');
           Serial.print("Gust Peak: ");
-          Serial.print(gustPeakKmh); 
-          
-
+          Serial.print(gustPeakKmh);
           Serial.println( " " );
         }
         windAverage = windAverageOld;
         windGustOld = windGust;
       }
-      if (!digitalRead(2))
+      if ( (!digitalRead(2))  )
       {
-        Serial.print(" Retracting (Rain)...."); // Somfy is a French company, after all.
-        BuildFrame(frame, HAUT);
-        //delay(1000);
+        Serial.print(" Raining ");
+        if ( timeoutTime < now() )
+        {
+          Serial.print(" Retracting (Rain)....");
+          BuildFrame(frame, HAUT);   // Somfy is a French company, after all.
+          timeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
+        }
       }
       if (fineOffset.nextPulse(p))
         reportSerial("FINE", fineOffset);
