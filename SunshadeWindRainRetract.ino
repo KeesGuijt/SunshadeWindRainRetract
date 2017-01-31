@@ -45,6 +45,7 @@ int windAverageOld;
 float gustPeakKmh;
 unsigned int gustPeakKmhTimeStored;
 //bool windAverageStored;
+unsigned long retractTimeoutTime = now(); //Somfy command can only be sent once in 15 min
 
 class DecodeOOK {
   protected:
@@ -397,7 +398,7 @@ volatile word pulse;
 
 #if defined(__AVR_ATmega1280__)
 
-xcv--not used --
+//--not used --
 
 void ext_int_1(void) {
 #else
@@ -551,7 +552,13 @@ void processMessage() {
     if ( pctime >= DEFAULT_TIME) { // check the integer is a valid time (greater than Jan 1 2013)
       setTime(pctime); // Sync Arduino clock to the time received on the serial port
     }
+    //read all remaining data
+    while (Serial.available()) 
+	{
+       *header = Serial.read();
+    }   
   }
+
   if ( (*header == *commandHeaderUc) || (*header == *commandHeaderLc) )
   {
     controlCode = Serial.parseInt();
@@ -779,8 +786,6 @@ void setup () {
 
 void loop () {
 
-  unsigned long timeoutTime = now(); //Somfy command can only be sent once in 15 min
-
   if (Serial.available()) {
     processMessage();
   }
@@ -834,11 +839,11 @@ void loop () {
             gustPeakKmhTimeStored = now();
             if ( gustPeakKmh > 30 ) {     //km/h trigger
               Serial.print(" Too much wind ");
-              if ( timeoutTime < now() )
+              if ( retractTimeoutTime < now() )
               {
                 Serial.print(" Retracting (Wind)....");
                 BuildFrame(frame, HAUT);   // Somfy is a French company, after all.
-                timeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
+                retractTimeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
               }
             }
           }
@@ -860,11 +865,11 @@ void loop () {
       if ( (!digitalRead(2))  )
       {
         Serial.print(" Raining ");
-        if ( timeoutTime < now() )
+        if ( retractTimeoutTime < now() )
         {
           Serial.print(" Retracting (Rain)....");
           BuildFrame(frame, HAUT);   // Somfy is a French company, after all.
-          timeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
+          retractTimeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
         }
       }
       if (fineOffset.nextPulse(p))
