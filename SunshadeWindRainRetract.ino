@@ -28,6 +28,24 @@ int minSec = 0;
 #define RAINSENSOR  A6
 #define ResetSuppressPin 12
 
+#define SYMBOL 640
+#define HAUT 0x2
+#define STOP 0x1
+#define BAS 0x4
+#define PROG 0x8
+#define EEPROM_ADDRESS 0
+
+#define REMOTE 0x121300    //<-- Change it!
+
+
+unsigned int newRollingCode = 101;       //<-- Change it!
+unsigned int rollingCode = 0;
+byte frame[7];
+byte checksum;
+
+void BuildFrame(byte *frame, byte button);
+void SendCommand(byte *frame, byte sync);
+
 const byte reverse_bits_lookup[] = {
   0x0, 0x8, 0x4, 0xC, 0x2, 0xA, 0x6, 0xE,
   0x1, 0x9, 0x5, 0xD, 0x3, 0xB, 0x7, 0xF
@@ -526,10 +544,10 @@ void processMessage() {
   const char *commandHeaderUc = "C";// Header tag for serial device command message
   const char *commandHeaderLc = "c";// Header tag for serial device command message
 
-  char *header ;
-  *header = Serial.read();
+  char header = (char)Serial.read();
 
-  if ( (*header == *timeHeaderUc) || (*header == *timeHeaderLc) )
+
+  if (header == 't' || header == 'T')
   {
     Serial.print("Time received from PC: ");
     pctime = Serial.parseInt();
@@ -539,7 +557,7 @@ void processMessage() {
     digitalClockDisplay();
     Serial.println(" ");
   }
-  else if ( (*header == *commandHeaderUc) || (*header == *commandHeaderLc) )
+  else if ( (header == 'c') || (header == 'C') )
   {
     controlCode = Serial.parseInt();
     if ( controlCode == 101 )
@@ -550,23 +568,39 @@ void processMessage() {
       Serial.println(controlCode);
     }
   }
-  else
-  {
-    //read all remaining data
-    while (Serial.available())
-    {
-      *header = Serial.read();
+  else if (header == 'm' || header == 'u' || header == 'h') {
+    Serial.println("Retract"); // Somfy sun shade
+    BuildFrame(frame, HAUT);
+    SendCommand(frame, 2);
+    for(int i = 0; i<2; i++) {
+      SendCommand(frame, 7);
+    }
+  }
+  else if (header == 's') {
+    Serial.println("Stop");
+    BuildFrame(frame, STOP);
+    SendCommand(frame, 2);
+    for(int i = 0; i<2; i++) {
+      SendCommand(frame, 7);
+    }
+  }
+  else if (header == 'b' || header == 'd') {
+    Serial.println("Descend");
+    BuildFrame(frame, BAS);
+    SendCommand(frame, 2);
+    for(int i = 0; i<2; i++) {
+      SendCommand(frame, 7);
+    }
+  }
+  else if (header == 'p') {
+    Serial.println("Prog");
+    BuildFrame(frame, PROG);
+    SendCommand(frame, 2);
+    for(int i = 0; i<2; i++) {
+      SendCommand(frame, 7);
     }
   }
 }
-
-
-time_t requestSync()
-{
-  Serial.write(TIME_REQUEST);
-  return 0; // the time will be sent later in response to serial mesg
-}
-
 
 
 /*   This part allows you to emulate a Somfy RTS or Simu HZ remote.
@@ -601,14 +635,6 @@ time_t requestSync()
 #define EEPROM_ADDRESS 0
 
 #define REMOTE 0x121300    //<-- Change it!
-
-unsigned int newRollingCode = 101;       //<-- Change it!
-unsigned int rollingCode = 0;
-byte frame[7];
-byte checksum;
-
-void BuildFrame(byte *frame, byte button);
-void SendCommand(byte *frame, byte sync);
 
 
 void BuildFrame(byte *frame, byte button) {
@@ -757,9 +783,6 @@ void setup () {
   pinMode(2, INPUT_PULLUP);
   pinMode(13, OUTPUT);
 
-  setSyncProvider( requestSync);	//set function to call when sync required
-  Serial.println("Waiting for sync message");
-
   //Somfy
   pinMode(PORT_RF, OUTPUT);  //Pin  an output
   digitalWrite(PORT_RF, 0); // Pin  LOW
@@ -777,11 +800,11 @@ void loop () {
   static float windGustKmh = 0;
   static float averagePeakKmh = 0;
   static float gustPeakKmh = 0;
-  static unsigned int averagePeakKmhTimeStored = 0;
-  static unsigned int gustPeakKmhTimeStored = 0;
+  static unsigned long averagePeakKmhTimeStored = 0;
+  static unsigned long gustPeakKmhTimeStored = 0;
   static unsigned long retractTimeoutTime = now(); //Somfy command can only be sent once in 15 min
 
-  //no int now, handle 2 messanges if possible 
+  //no int now, handle 2 messanges if possible
   //cli();
   if (Serial.available()) {
     processMessage();
@@ -810,12 +833,11 @@ void loop () {
         reportSerial("VENT", ventus);
         //			ventus1=ventus;
 
-        if ( ((int)windAverage != (int)windAverageOld) || ((int)windGust != (int)windGustOld) )
+        if ( (windAverage != windAverageOld) || (windGust != windGustOld) )
         {
           windAverageKmh = float(windAverage) / 5.0 * 3.6 * 2.5; //personal scaling // 0.2 m/s to km/h, compensate 3* for alt
           windGustKmh = float(windGust) / 5.0 * 3.6 * 2.5;  // 0.2 m/s to km/h, compensate 3* for alt )
           digitalClockDisplay();
-          Serial.print(' ');
           Serial.print("Average: ");
           if ( windAverageKmh < 10)
           {
@@ -836,12 +858,12 @@ void loop () {
           averagePeakKmh = windAverageKmh;
           averagePeakKmhTimeStored = now();
         }
-        else if ( (averagePeakKmhTimeStored + 30 * 60) > now() ) //30 min
+        if ( (averagePeakKmhTimeStored + 30 * 60) < now() ) //30 min
         {
           averagePeakKmh -= 1; // start lowering peak value to find a new, lower peak
         }
 
-        if ( ((int)windAverage != (int)windAverageOld) || ((int)windGust != (int)windGustOld) )
+        if ( (windAverage != windAverageOld) || (windGust != windGustOld) )
         {
           Serial.print("   Average Peak: ");
           if ( averagePeakKmh < 10)
@@ -869,6 +891,12 @@ void loop () {
           Serial.print("_Bft.");
 
           //Gust Peak
+
+          if (gustPeakKmh < windGustKmh)
+          {
+            gustPeakKmh = windGustKmh;
+            gustPeakKmhTimeStored = now();
+          }
           Serial.print(" Gust Peak: ");
           Serial.print(gustPeakKmh);
 
@@ -894,24 +922,22 @@ void loop () {
             Serial.print(' ');
           }
           Serial.print(windDirection);
-        }
-
-        if (gustPeakKmh < windGustKmh)
-        {
-          gustPeakKmh = windGustKmh;
-          gustPeakKmhTimeStored = now();
-          if ( gustPeakKmh > 30 )       //km/h trigger
+          if ( gustPeakKmh > 44 )       //km/h trigger
           {
-            Serial.print(" Too much wind ");
-            if ( retractTimeoutTime < now() )
-            {
-              Serial.print(" Retracting (Wind)....");
-              BuildFrame(frame, HAUT);   // Somfy is a French company, after all.
-              retractTimeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
-            }
+            Serial.print(" Too windy ");
           }
         }
-        else if ( (gustPeakKmhTimeStored + 30 * 60) > now() ) //30 min
+
+        if ( gustPeakKmh > 44 )       //km/h trigger
+        {
+          if ( retractTimeoutTime < now() )
+          {
+            Serial.print(" Retracting (Wind)....");
+            BuildFrame(frame, HAUT);   // Somfy is a French company, after all.
+            retractTimeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
+          }
+        }
+        if ( (gustPeakKmhTimeStored + 30 * 60) < now() ) //30 min
         {
           gustPeakKmh -= 1; // start lowering peak value to find a new, lower peak
         }
@@ -922,15 +948,14 @@ void loop () {
           windGustOld = windGust;
           if ( (!digitalRead(2))  )
           {
-		  	Serial.print(" Raining ");
+            Serial.print(" Raining ");
           }
           else
           {
-		  	Serial.print(" Dry ");
+            Serial.print(" Dry ");
           }
           Serial.println( " " );
         }
-
       }
       if ( (!digitalRead(2))  )
       {
