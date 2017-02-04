@@ -17,8 +17,6 @@
 // 2010-04-11 <jcw@equi4.com> http://opensource.org/licenses/mit-license.php
 // $Id: ookDecoder.pde 5331 2010-04-17 10:45:17Z jcw $
 
-#include <TimeLib.h>
-
 #define TIME_HEADER  "T"   // Header tag for serial time sync message
 #define TIME_REQUEST  7    // ASCII bell character requests a time sync message 
 
@@ -934,6 +932,10 @@ void loop () {
           {
             Serial.print(" Retracting (Wind)....");
             BuildFrame(frame, HAUT);   // Somfy is a French company, after all.
+		    SendCommand(frame, 2);
+		    for(int i = 0; i<2; i++) {
+		      SendCommand(frame, 7);
+		    }
             retractTimeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
           }
         }
@@ -964,6 +966,10 @@ void loop () {
         {
           Serial.println(" Retracting (Rain)....");
           BuildFrame(frame, HAUT);   // Somfy is a French company, after all.
+  	      SendCommand(frame, 2);
+		  for(int i = 0; i<2; i++) {
+		    SendCommand(frame, 7);
+		  }  
           retractTimeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
         }
       }
