@@ -823,16 +823,17 @@ void loop () {
       reportSerial("OSV2", orscV2);
     if (ventus.nextPulse(p))
     {
-      if (minSec != (minute() * 60 + second()) )
+      if (minSec != (minute() * 60 + second()) )  //only proces once a second
       {
-        minSec = (minute() * 60 + second()) ;
+        //minSec = (minute() * 60 + second()) ;
         //		 if (ventus1=0)
         //digitalClockDisplay();
         reportSerial("VENT", ventus);
         //			ventus1=ventus;
 
-        if ( (windAverage != windAverageOld) || (windGust != windGustOld) )
+        if ( (windAverage != windAverageOld) || (windGust != windGustOld) )  //only proces changed data, once a second
         {
+          minSec = (minute() * 60 + second()) ;
           windAverageKmh = float(windAverage) / 5.0 * 3.6 * 2.5; //personal scaling // 0.2 m/s to km/h, compensate 3* for alt
           windGustKmh = float(windGust) / 5.0 * 3.6 * 2.5;  // 0.2 m/s to km/h, compensate 3* for alt )
           digitalClockDisplay();
@@ -979,5 +980,15 @@ void loop () {
     if (mandolyn.nextPulse(p))
       reportSerial("MAND", mandolyn);
   } //p!=0
+  if ( minSec > 0 )  //after a reset, wait for first weather data 
+  {
+    if ( (minSec + 300) <  (minute() * 60 + second())  )  //no new weather data for 5 minutes, perform a reset
+    {
+      //pinMode(ResetSuppressPin, OUTPUT);
+      //digitalWrite(ResetSuppressPin, 0);  // set the ResetSuppressPin OFF: reset the arduino
+      minSec = 0;
+      setup();
+    }
+  }     
 } //loop
 
