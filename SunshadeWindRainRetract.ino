@@ -8,6 +8,7 @@
 
 #include <Time.h>
 #include <TimeLib.h>
+#include <avr/wdt.h>
 
 // Source: http://jeelabs.net/attachments/download/49/Ook_OSV2.pde
 //
@@ -790,6 +791,9 @@ void setup () {
   }
   Serial.print("Simulated remote number : "); Serial.println(REMOTE, HEX);
   Serial.print("Current rolling code    : "); Serial.println(rollingCode);
+
+  wdt_enable(WDTO_8S);
+  
 }
 
 
@@ -989,6 +993,8 @@ void loop () {
       minSec = 0;
       setup();
     }
-  }     
+  } 
+  //tell the watchdog all is well
+  wdt_reset();    
 } //loop
 
