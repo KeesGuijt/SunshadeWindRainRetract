@@ -9,6 +9,7 @@
 #include <Time.h>
 #include <TimeLib.h>
 #include <avr/wdt.h>
+#include <EEPROM.h>
 
 // Source: http://jeelabs.net/attachments/download/49/Ook_OSV2.pde
 //
@@ -33,6 +34,7 @@ int minSec = 0;
 #define BAS 0x4
 #define PROG 0x8
 #define EEPROM_ADDRESS 0
+#define CLOCKEEPROMADDRESS 12
 
 #define REMOTE 0x121300    //<-- Change it!
 
@@ -552,6 +554,11 @@ void processMessage() {
     pctime = Serial.parseInt();
     if ( pctime >= DEFAULT_TIME) { // check the integer is a valid time (greater than Jan 1 2013)
       setTime(pctime); // Sync Arduino clock to the time received on the serial port
+     
+     //Put the float data from the EEPROM at position 'CLOCKEEPROMADDRESS'
+     EEPROM.put(CLOCKEEPROMADDRESS, pctime);
+     Serial.println("Timeinfo written to EEPROM.");
+
     }
     digitalClockDisplay();
     Serial.println(" ");
@@ -623,7 +630,6 @@ void processMessage() {
     - you can also send a HEX number directly for any weird command you (0x9 for the sun and wind detector for instance)
 */
 
-#include <EEPROM.h>
 #define PORT_RF 3 // DigitalPin for Somfy
 
 #define SYMBOL 640
@@ -747,11 +753,21 @@ void SendCommand(byte *frame, byte sync) {
 
 
 void setup () {
+  
+  wdt_enable(WDTO_8S);
+
   Serial.begin(9600);
   Serial.print("[WR]\n");
 
   digitalWrite(ResetSuppressPin, 1);// set the ResetSuppressPin ON
   pinMode(ResetSuppressPin, OUTPUT);
+
+  //Get the time data from the EEPROM at position 'CLOCKEEPROMADDRESS'
+  unsigned long pctime;
+  EEPROM.get(CLOCKEEPROMADDRESS, pctime);
+  setTime(pctime); // Sync Arduino clock to the time received on the serial port
+  Serial.println("Arduino clock set from Eeprom");
+
 
 #if !defined(__AVR_ATmega1280__)
   pinMode(13 + PORT, INPUT);	// use the AIO pin
@@ -791,8 +807,6 @@ void setup () {
   }
   Serial.print("Simulated remote number : "); Serial.println(REMOTE, HEX);
   Serial.print("Current rolling code    : "); Serial.println(rollingCode);
-
-  wdt_enable(WDTO_8S);
   
 }
 
@@ -988,10 +1002,13 @@ void loop () {
   {
     if ( (minSec + 300) <  (minute() * 60 + second())  )  //no new weather data for 5 minutes, perform a reset
     {
-      //pinMode(ResetSuppressPin, OUTPUT);
-      //digitalWrite(ResetSuppressPin, 0);  // set the ResetSuppressPin OFF: reset the arduino
-      minSec = 0;
-      setup();
+      //reset
+      pinMode(ResetSuppressPin, OUTPUT);
+      digitalWrite(ResetSuppressPin, 0);  // set the ResetSuppressPin OFF: reset the arduino
+
+      //re-run setup
+      //minSec = 0;
+      //setup();
     }
   } 
   //tell the watchdog all is well
