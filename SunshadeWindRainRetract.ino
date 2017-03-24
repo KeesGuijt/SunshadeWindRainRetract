@@ -431,7 +431,7 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
 
   const byte* data = decoder.getData(pos);
   //Serial.print(s);
-  //Serial.print(' ');
+  Serial.print('.');
   for (byte i = 0; i < pos; ++i) {
     //	i	0 1 2 3 4
     //VENT 1468000070
@@ -554,10 +554,10 @@ void processMessage() {
     pctime = Serial.parseInt();
     if ( pctime >= DEFAULT_TIME) { // check the integer is a valid time (greater than Jan 1 2013)
       setTime(pctime); // Sync Arduino clock to the time received on the serial port
-     
-     //Put the float data from the EEPROM at position 'CLOCKEEPROMADDRESS'
-     EEPROM.put(CLOCKEEPROMADDRESS, pctime);
-     Serial.println("Timeinfo written to EEPROM.");
+
+      //Put the float data from the EEPROM at position 'CLOCKEEPROMADDRESS'
+      EEPROM.put(CLOCKEEPROMADDRESS, pctime);
+      Serial.println("Timeinfo written to EEPROM.");
 
     }
     digitalClockDisplay();
@@ -578,7 +578,7 @@ void processMessage() {
     Serial.println("Retract"); // Somfy sun shade
     BuildFrame(frame, HAUT);
     SendCommand(frame, 2);
-    for(int i = 0; i<2; i++) {
+    for (int i = 0; i < 2; i++) {
       SendCommand(frame, 7);
     }
   }
@@ -586,7 +586,7 @@ void processMessage() {
     Serial.println("Stop");
     BuildFrame(frame, STOP);
     SendCommand(frame, 2);
-    for(int i = 0; i<2; i++) {
+    for (int i = 0; i < 2; i++) {
       SendCommand(frame, 7);
     }
   }
@@ -594,7 +594,7 @@ void processMessage() {
     Serial.println("Descend");
     BuildFrame(frame, BAS);
     SendCommand(frame, 2);
-    for(int i = 0; i<2; i++) {
+    for (int i = 0; i < 2; i++) {
       SendCommand(frame, 7);
     }
   }
@@ -602,7 +602,7 @@ void processMessage() {
     Serial.println("Prog");
     BuildFrame(frame, PROG);
     SendCommand(frame, 2);
-    for(int i = 0; i<2; i++) {
+    for (int i = 0; i < 2; i++) {
       SendCommand(frame, 7);
     }
   }
@@ -753,7 +753,7 @@ void SendCommand(byte *frame, byte sync) {
 
 
 void setup () {
-  
+
   wdt_enable(WDTO_8S);
 
   Serial.begin(9600);
@@ -767,7 +767,8 @@ void setup () {
   EEPROM.get(CLOCKEEPROMADDRESS, pctime);
   setTime(pctime); // Sync Arduino clock to the time received on the serial port
   Serial.println("Arduino clock set from Eeprom");
-
+  digitalClockDisplay();
+  Serial.println(".");
 
 #if !defined(__AVR_ATmega1280__)
   pinMode(13 + PORT, INPUT);	// use the AIO pin
@@ -807,7 +808,7 @@ void setup () {
   }
   Serial.print("Simulated remote number : "); Serial.println(REMOTE, HEX);
   Serial.print("Current rolling code    : "); Serial.println(rollingCode);
-  
+
 }
 
 
@@ -819,6 +820,7 @@ void loop () {
   static unsigned long averagePeakKmhTimeStored = 0;
   static unsigned long gustPeakKmhTimeStored = 0;
   static unsigned long retractTimeoutTime = now(); //Somfy command can only be sent once in 15 min
+  static int timeDiff = 0;
 
   //no int now, handle 2 messanges if possible
   //cli();
@@ -829,24 +831,35 @@ void loop () {
     processMessage();
   }
 
+
+  if (second() == 0)
+  {
+    Serial.print("minSec : ");
+    Serial.println(minSec);
+    Serial.print("minute60+secs : ");
+    Serial.println(minute() * 60 + second());
+    Serial.println("-                        ");
+    delay(1000);
+  }
   cli();
   word p = pulse;
   pulse = 0;
   sei();
 
   if (p != 0) {
-    //Serial.println("Waiting for sync message");
+    //Serial.print(".");
 
     if (orscV2.nextPulse(p))
       reportSerial("OSV2", orscV2);
     if (ventus.nextPulse(p))
     {
+      reportSerial("VENT", ventus);
       if (minSec != (minute() * 60 + second()) )  //only proces once a second
       {
-        //minSec = (minute() * 60 + second()) ;
+        minSec = (minute() * 60 + second()) ;
         //		 if (ventus1=0)
         //digitalClockDisplay();
-        reportSerial("VENT", ventus);
+        //reportSerial("VENT", ventus);
         //			ventus1=ventus;
 
         if ( (windAverage != windAverageOld) || (windGust != windGustOld) )  //only proces changed data, once a second
@@ -951,10 +964,10 @@ void loop () {
           {
             Serial.print(" Retracting (Wind)....");
             BuildFrame(frame, HAUT);   // Somfy is a French company, after all.
-		    SendCommand(frame, 2);
-		    for(int i = 0; i<2; i++) {
-		      SendCommand(frame, 7);
-		    }
+            SendCommand(frame, 2);
+            for (int i = 0; i < 2; i++) {
+              SendCommand(frame, 7);
+            }
             retractTimeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
           }
         }
@@ -985,10 +998,10 @@ void loop () {
         {
           Serial.println(" Retracting (Rain)....");
           BuildFrame(frame, HAUT);   // Somfy is a French company, after all.
-  	      SendCommand(frame, 2);
-		  for(int i = 0; i<2; i++) {
-		    SendCommand(frame, 7);
-		  }  
+          SendCommand(frame, 2);
+          for (int i = 0; i < 2; i++) {
+            SendCommand(frame, 7);
+          }
           retractTimeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
         }
       }
@@ -998,20 +1011,28 @@ void loop () {
     if (mandolyn.nextPulse(p))
       reportSerial("MAND", mandolyn);
   } //p!=0
-  if ( minSec > 0 )  //after a reset, wait for first weather data 
+
+  if ( minSec == 0 )  //after a reset, wait for first weather data
   {
-    if ( (minSec + 300) <  (minute() * 60 + second())  )  //no new weather data for 5 minutes, perform a reset
-    {
+    minSec = minute() * 60 + second();  //fake time read after a reset
+  }
+  timeDiff = ( (minute() * 60 + second()) - minSec );
+  if ( (timeDiff > 300) || (timeDiff < -300) )  //last read time and current time should not be more than 5 min apart
+  {
+      unsigned long pctime;
+      pctime = now();
+      EEPROM.put(CLOCKEEPROMADDRESS, pctime);
+      Serial.println("Timeinfo written to EEPROM. Resetting");
+      Serial.print("minSec : ");
+      Serial.println(minSec);
+      Serial.print("minute60+secs : ");
+      Serial.println(minute() * 60 + second());
+      delay(100);
       //reset
       pinMode(ResetSuppressPin, OUTPUT);
       digitalWrite(ResetSuppressPin, 0);  // set the ResetSuppressPin OFF: reset the arduino
-
-      //re-run setup
-      //minSec = 0;
-      //setup();
-    }
-  } 
+}
   //tell the watchdog all is well
-  wdt_reset();    
+  wdt_reset();
 } //loop
 
