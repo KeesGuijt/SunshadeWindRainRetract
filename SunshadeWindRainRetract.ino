@@ -430,8 +430,7 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
   byte windDataType = 0;
 
   const byte* data = decoder.getData(pos);
-  //Serial.print(s);
-  Serial.print('.');
+  //Serial.print('.');
   for (byte i = 0; i < pos; ++i) {
     //	i	0 1 2 3 4
     //VENT 1468000070
@@ -768,7 +767,7 @@ void setup () {
   setTime(pctime); // Sync Arduino clock to the time received on the serial port
   Serial.println("Arduino clock set from Eeprom");
   digitalClockDisplay();
-  Serial.println(".");
+  //Serial.println(".");
 
 #if !defined(__AVR_ATmega1280__)
   pinMode(13 + PORT, INPUT);	// use the AIO pin
@@ -834,12 +833,14 @@ void loop () {
 
   if (second() == 0)
   {
+    /*
     Serial.print("minSec : ");
     Serial.println(minSec);
     Serial.print("minute60+secs : ");
     Serial.println(minute() * 60 + second());
     Serial.println("-                        ");
     delay(1000);
+    */
   }
   cli();
   word p = pulse;
@@ -1017,6 +1018,14 @@ void loop () {
     minSec = minute() * 60 + second();  //fake time read after a reset
   }
   timeDiff = ( (minute() * 60 + second()) - minSec );
+  if ( timeDiff < -3300 )
+  {
+    timeDiff = timeDiff + 3600;
+  }
+  if ( timeDiff > 3300 )
+  {
+    timeDiff = timeDiff - 3600;
+  }
   if ( (timeDiff > 300) || (timeDiff < -300) )  //last read time and current time should not be more than 5 min apart
   {
       unsigned long pctime;
