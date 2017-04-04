@@ -11,6 +11,14 @@
 #include <avr/wdt.h>
 #include <EEPROM.h>
 
+// Defines for setting and clearing register bits
+#ifndef cbi
+#define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
+#endif
+#ifndef sbi
+#define sbi(sfr, bit) (_SFR_BYTE(sfr) |= _BV(bit))
+#endif
+
 // Source: http://jeelabs.net/attachments/download/49/Ook_OSV2.pde
 //
 // Oregon V2 decoder added - Dominique Pierre
@@ -59,6 +67,7 @@ int avgPeakKmhAge;
 int windAverage;
 int windAverageOld;
 int windDirection;
+unsigned long nonInterruptLoopCount=0;
 
 class DecodeOOK {
   protected:
@@ -842,10 +851,20 @@ void loop () {
     delay(1000);
     */
   }
-  cli();
+  
+  //cli();
+  //ACSR =  _BV(ACIE);
+  //      | bit (ACIS1);  
+  cbi( ACSR, ACIE ); // disable interrupt
+
   word p = pulse;
   pulse = 0;
-  sei();
+  
+  //sei();
+  // use analog comparator to switch at 1.1V bandgap transition
+  //ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
+  sbi( ACSR, ACIE ); // disable interrupt
+
 
   if (p != 0) {
     //Serial.print(".");
@@ -1013,6 +1032,8 @@ void loop () {
       reportSerial("MAND", mandolyn);
   } //p!=0
 
+  nonInterruptLoopCount++;
+  
   if ( minSec == 0 )  //after a reset, wait for first weather data
   {
     minSec = minute() * 60 + second();  //fake time read after a reset
@@ -1026,7 +1047,7 @@ void loop () {
   {
     timeDiff = timeDiff - 3600;
   }
-  if ( (timeDiff > 300) || (timeDiff < -300) )  //last read time and current time should not be more than 5 min apart
+  if ( (timeDiff > 300) || (timeDiff < -300) || nonInterruptLoopCount > 1600000000  )  //last read time and current time should not be more than 5 min apart
   {
       unsigned long pctime;
       pctime = now();
@@ -1040,7 +1061,8 @@ void loop () {
       //reset
       pinMode(ResetSuppressPin, OUTPUT);
       digitalWrite(ResetSuppressPin, 0);  // set the ResetSuppressPin OFF: reset the arduino
-}
+  }
+  
   //tell the watchdog all is well
   wdt_reset();
 } //loop
