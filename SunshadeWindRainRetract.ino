@@ -853,18 +853,18 @@ void loop () {
   }
   
   //cli();
-  //ACSR =  _BV(ACIE);
-  //      | bit (ACIS1);  
-  cbi( ACSR, ACIE ); // disable interrupt
+  // ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
+  //cbi( ACSR, ACBG ); // disable 
+  cbi( ACSR, ACI ); // disable 
+  cbi( ACSR, ACIE ); // disable analog interrupt
 
   word p = pulse;
   pulse = 0;
   
   //sei();
-  // use analog comparator to switch at 1.1V bandgap transition
-  //ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
-  sbi( ACSR, ACIE ); // disable interrupt
-
+  //sbi( ACSR, ACBG ); // enable 
+  sbi( ACSR, ACI ); // enable 
+  sbi( ACSR, ACIE ); // enable analog interrupt
 
   if (p != 0) {
     //Serial.print(".");
