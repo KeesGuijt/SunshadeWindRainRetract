@@ -558,6 +558,8 @@ void processMessage() {
 
   if (header == 't' || header == 'T')
   {
+    digitalClockDisplay();
+    Serial.println(" ");
     Serial.print("Time received from PC: ");
     pctime = Serial.parseInt();
     if ( pctime >= DEFAULT_TIME) { // check the integer is a valid time (greater than Jan 1 2013)
@@ -566,7 +568,6 @@ void processMessage() {
       //Put the float data from the EEPROM at position 'CLOCKEEPROMADDRESS'
       EEPROM.put(CLOCKEEPROMADDRESS, pctime);
       Serial.println("Timeinfo written to EEPROM.");
-
     }
     digitalClockDisplay();
     Serial.println(" ");
@@ -1047,6 +1048,14 @@ void loop () {
   {
     timeDiff = timeDiff - 3600;
   }
+  if ( (timeDiff > 60) || (timeDiff < -60) )  //last read time and current time should not be more than 5 min apart
+  {
+      Serial.print(":");
+  }
+  if ( nonInterruptLoopCount > 160000000  )  //last read time and current time should not be more than 5 min apart
+  {
+      Serial.print("-");
+  }
   if ( (timeDiff > 300) || (timeDiff < -300) || nonInterruptLoopCount > 1600000000  )  //last read time and current time should not be more than 5 min apart
   {
       unsigned long pctime;
@@ -1062,6 +1071,7 @@ void loop () {
       pinMode(ResetSuppressPin, OUTPUT);
       digitalWrite(ResetSuppressPin, 0);  // set the ResetSuppressPin OFF: reset the arduino
   }
+  
   
   //tell the watchdog all is well
   wdt_reset();
