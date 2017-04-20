@@ -68,6 +68,8 @@ int windAverage;
 int windAverageOld;
 int windDirection;
 unsigned long nonInterruptLoopCount=0;
+unsigned long shortLoopCount=0;
+
 
 class DecodeOOK {
   protected:
@@ -830,6 +832,7 @@ void loop () {
   static unsigned long gustPeakKmhTimeStored = 0;
   static unsigned long retractTimeoutTime = now(); //Somfy command can only be sent once in 15 min
   static int timeDiff = 0;
+  unsigned long oldClockTime;
 
   //no int now, handle 2 messanges if possible
   //cli();
@@ -888,6 +891,7 @@ void loop () {
           minSec = (minute() * 60 + second()) ;
           windAverageKmh = float(windAverage) / 5.0 * 3.6 * 2.5; //personal scaling // 0.2 m/s to km/h, compensate 3* for alt
           windGustKmh = float(windGust) / 5.0 * 3.6 * 2.5;  // 0.2 m/s to km/h, compensate 3* for alt )
+          Serial.println();
           digitalClockDisplay();
           Serial.print("Average: ");
           if ( windAverageKmh < 10)
@@ -1034,6 +1038,7 @@ void loop () {
   } //p!=0
 
   nonInterruptLoopCount++;
+  shortLoopCount++;
   
   if ( minSec == 0 )  //after a reset, wait for first weather data
   {
@@ -1048,13 +1053,31 @@ void loop () {
   {
     timeDiff = timeDiff - 3600;
   }
+  
+  //try to detect problem faster, make visable in realtime 
+  //display something at least every 60 sec, 
+  //check clock using loop, check loop using clock 
+  //both should advance, else print 
+  //check every 60 sec : loopcount has increased enough ? 
+  //check every x loops: time has past enough ?
+  
   if ( (timeDiff > 60) || (timeDiff < -60) )  //last read time and current time should not be more than 5 min apart
   {
-      Serial.print(":");
+      //Serial.print(":");
+      
   }
-  if ( nonInterruptLoopCount > 160000000  )  //last read time and current time should not be more than 5 min apart
+  if ( shortLoopCount > 800000  )  //show clock every short loop
   {
-      Serial.print("-");
+      Serial.print(".");
+      Serial.println(now()-oldClockTime);
+      oldClockTime=now(); 
+      shortLoopCount=0;
+  }
+  if ( second() == 0 )  //show shortLoopCount every minute
+  {
+      Serial.print(",");
+      Serial.println(shortLoopCount);
+      delay(1000);
   }
   if ( (timeDiff > 300) || (timeDiff < -300) || nonInterruptLoopCount > 1600000000  )  //last read time and current time should not be more than 5 min apart
   {
