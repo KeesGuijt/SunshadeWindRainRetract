@@ -67,8 +67,8 @@ int avgPeakKmhAge;
 int windAverage;
 int windAverageOld;
 int windDirection;
-unsigned long nonInterruptLoopCount=0;
-unsigned long shortLoopCount=0;
+unsigned long nonInterruptLoopCount = 0;
+unsigned long shortLoopCount = 0;
 
 
 class DecodeOOK {
@@ -435,13 +435,18 @@ ISR(ANALOG_COMP_vect) {
 }
 
 void reportSerial (const char* s, class DecodeOOK& decoder) {
+  //Serial.print("-");
   if ( !decoder.checkSum() )
     return;
-  byte pos;
   byte windDataType = 0;
+  byte pos;
+  if (pos < 5)
+  {
+  //  return;
+  }
 
   const byte* data = decoder.getData(pos);
-  //Serial.print('.');
+  Serial.print(".");
   for (byte i = 0; i < pos; ++i) {
     //	i	0 1 2 3 4
     //VENT 1468000070
@@ -457,7 +462,7 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
             windDirection = ((data[i] & 0x01) );   //      0           0      8  bit 0 (0 or 1)  9 bits long
           }
         }
-		else
+        else
         {
           windDataType = 0;
         }
@@ -840,6 +845,7 @@ void loop () {
   static unsigned long retractTimeoutTime = now(); //Somfy command can only be sent once in 15 min
   static int timeDiff = 0;
   unsigned long oldClockTime;
+  bool pulseActivity;
 
   //no int now, handle 2 messanges if possible
   //cli();
@@ -848,25 +854,28 @@ void loop () {
   }
   //cli();
   // ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
-  //cbi( ACSR, ACBG ); // disable 
-  cbi( ACSR, ACI ); // disable 
+  //cbi( ACSR, ACBG ); // disable
+  cbi( ACSR, ACI ); // disable
   cbi( ACSR, ACIE ); // disable analog interrupt
 
   word p = pulse;
   pulse = 0;
-  
+
   //sei();
-  //sbi( ACSR, ACBG ); // enable 
-  sbi( ACSR, ACI ); // enable 
+  //sbi( ACSR, ACBG ); // enable
+  sbi( ACSR, ACI ); // enable
   sbi( ACSR, ACIE ); // enable analog interrupt
 
   if (p != 0) {
     //Serial.print(".");
-
+    pulseActivity = true;
+    
     if (orscV2.nextPulse(p))
       reportSerial("OSV2", orscV2);
     if (ventus.nextPulse(p))
     {
+      //Serial.print(p);
+      //Serial.print(" ");
       reportSerial("VENT", ventus);
       //Serial.print(".");
       if (minSec != (minute() * 60 + second()) )  //only proces once a second
@@ -1030,7 +1039,7 @@ void loop () {
 
   nonInterruptLoopCount++;
   shortLoopCount++;
-  
+
   if ( minSec == 0 )  //after a reset, wait for first weather data
   {
     minSec = minute() * 60 + second();  //fake time read after a reset
@@ -1044,45 +1053,57 @@ void loop () {
   {
     timeDiff = timeDiff - 3600;
   }
-  
-  //try to detect problem faster, make visable in realtime 
-  //display something at least every 60 sec, 
-  //check clock using loop, check loop using clock 
-  //both should advance, else print 
-  //check every 60 sec : loopcount has increased enough ? 
+
+  //try to detect problem faster, make visable in realtime
+  //display something at least every 60 sec,
+  //check clock using loop, check loop using clock
+  //both should advance, else print
+  //check every 60 sec : loopcount has increased enough ?
   //check every x loops: time has past enough ?
- 
+
   if ( shortLoopCount > 800000  )  //show clock every short loop
   {
-      Serial.print(".");
-      Serial.println(now()-oldClockTime);
-      oldClockTime=now(); 
-      shortLoopCount=0;
+    Serial.print(".");
+    Serial.println(now() - oldClockTime);
+    oldClockTime = now();
+    shortLoopCount = 0;
+    if (pulseActivity == true)
+    {
+       Serial.print("*");
+       Serial.print(" ");
+       pulseActivity = false;
+    }
   }
   if ( second() == 0 )  //show shortLoopCount every minute
   {
-      Serial.print(",");
-      Serial.println(shortLoopCount);
-      delay(1000);
+    Serial.print(",");
+    Serial.println(shortLoopCount);
+    delay(1000);
+    if (pulseActivity == true)
+    {
+       Serial.print("*");
+       Serial.print(" ");
+       pulseActivity = false;
+    }
   }
   if ( (timeDiff > 300) || (timeDiff < -300) || nonInterruptLoopCount > 1600000000  )  //last read time and current time should not be more than 5 min apart
   {
-      unsigned long pctime;
-      pctime = now();
-      EEPROM.put(CLOCKEEPROMADDRESS, pctime);
-      Serial.println("Timeinfo written to EEPROM. Resetting");
-      Serial.print("minSec : ");
-      Serial.println(minSec);
-      Serial.print("minute60+secs : ");
-      Serial.println(minute() * 60 + second());
-      delay(100);
-      //reset
-      pinMode(ResetSuppressPin, OUTPUT);
-      digitalWrite(ResetSuppressPin, 0);  // set the ResetSuppressPin OFF: reset the arduino
+    unsigned long pctime;
+    pctime = now();
+    EEPROM.put(CLOCKEEPROMADDRESS, pctime);
+    Serial.println("Timeinfo written to EEPROM. Resetting");
+    Serial.print("minSec : ");
+    Serial.println(minSec);
+    Serial.print("minute60+secs : ");
+    Serial.println(minute() * 60 + second());
+    delay(100);
+    //reset
+    pinMode(ResetSuppressPin, OUTPUT);
+    digitalWrite(ResetSuppressPin, 0);  // set the ResetSuppressPin OFF: reset the arduino
   }
-  
+
   //delay(1);
-  
+
   //tell the watchdog all is well
   wdt_reset();
 } //loop
