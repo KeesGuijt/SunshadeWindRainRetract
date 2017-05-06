@@ -449,10 +449,17 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
     {
       if ((data[i] >> 4) == 6)	 //allways wind info
       {
-        windDataType = data[i];
-        if ((windDataType & 0x6E) == 0x6E)  //6E or 6F
+        if ( data[i] != 0x6C )  //6E or 6F     not 6C
         {
-          windDirection = ((data[i] & 0x01) );   //      0           0      8  bit 0 (0 or 1)  9 bits long
+          windDataType = data[i];
+          if ((windDataType & 0x6E) == 0x6E)  //6E or 6F
+          {
+            windDirection = ((data[i] & 0x01) );   //      0           0      8  bit 0 (0 or 1)  9 bits long
+          }
+        }
+		else
+        {
+          windDataType = 0;
         }
       }
       else
@@ -511,11 +518,11 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
       }
     } //for
 
-    //Serial.print(data[i] >> 4, HEX);
-    //Serial.print(data[i] & 0x0F, HEX);
+    Serial.print(data[i] >> 4, HEX);
+    Serial.print(data[i] & 0x0F, HEX);
   }
-  //Serial.print( decoder.checkSum() ? "\tOK" : "\tFAIL" );
-  //Serial.print( "\n" );
+  Serial.print( decoder.checkSum() ? "\tOK" : "\tFAIL" );
+  Serial.print( "\n" );
 
   decoder.resetDecoder();
 }  // reportSerial
@@ -839,23 +846,6 @@ void loop () {
   if (Serial.available()) {
     processMessage();
   }
-  if (Serial.available()) {
-    processMessage();
-  }
-
-
-  if (second() == 0)
-  {
-    /*
-    Serial.print("minSec : ");
-    Serial.println(minSec);
-    Serial.print("minute60+secs : ");
-    Serial.println(minute() * 60 + second());
-    Serial.println("-                        ");
-    delay(1000);
-    */
-  }
-  
   //cli();
   // ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
   //cbi( ACSR, ACBG ); // disable 
@@ -878,6 +868,7 @@ void loop () {
     if (ventus.nextPulse(p))
     {
       reportSerial("VENT", ventus);
+      //Serial.print(".");
       if (minSec != (minute() * 60 + second()) )  //only proces once a second
       {
         minSec = (minute() * 60 + second()) ;
@@ -1060,12 +1051,7 @@ void loop () {
   //both should advance, else print 
   //check every 60 sec : loopcount has increased enough ? 
   //check every x loops: time has past enough ?
-  
-  if ( (timeDiff > 60) || (timeDiff < -60) )  //last read time and current time should not be more than 5 min apart
-  {
-      //Serial.print(":");
-      
-  }
+ 
   if ( shortLoopCount > 800000  )  //show clock every short loop
   {
       Serial.print(".");
@@ -1095,6 +1081,7 @@ void loop () {
       digitalWrite(ResetSuppressPin, 0);  // set the ResetSuppressPin OFF: reset the arduino
   }
   
+  //delay(1);
   
   //tell the watchdog all is well
   wdt_reset();
