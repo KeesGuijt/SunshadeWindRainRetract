@@ -69,7 +69,9 @@ int windAverageOld;
 int windDirection;
 unsigned long nonInterruptLoopCount = 0;
 unsigned long shortLoopCount = 0;
-
+int lastZeroBitLength = 0;
+int lastOneBitLength = 0;
+int lastLeaderBitLength = 0;
 
 class DecodeOOK {
   protected:
@@ -258,15 +260,22 @@ class VentusDecoder : public DecodeOOK {
         case T0:		// Signal off = bit
           if ( 1700 < width && width < 4600 ) {
             if ( width < 2300 )
+            {
               gotBit( 0 );
+              lastZeroBitLength = width;
+            }
             else if ( width > 3400 )
+            {
               gotBit( 1 );
+              lastOneBitLength = width;
+            }
             else
               return -1;
             state = UNKNOWN;
           } else if ( total_bits > 35 && 7650 < width && width < 10350 ) {
             data[pos] = data[pos] << 4;
             pos++;
+            lastLeaderBitLength = width;
             return 1;
           } else
             return -1;
@@ -437,19 +446,24 @@ ISR(ANALOG_COMP_vect) {
 void reportSerial (const char* s, class DecodeOOK& decoder) {
   //Serial.print("-");
   if ( !decoder.checkSum() )
-    return;
+    //return;
+    ;
   byte windDataType = 0;
   byte pos;
-  if (pos < 5)
+  const byte* data = decoder.getData(pos);
+
+  //capture data with bad chacksum
+  //pos=4;
+  //Serial.print(pos);
+  if (pos < 4)
   {
-  //  return;
+    return;
   }
 
-  const byte* data = decoder.getData(pos);
-  Serial.print(".");
   for (byte i = 0; i < pos; ++i) {
     //	i	0 1 2 3 4
     //VENT 1468000070
+
     if (i == 1)
     {
       if ((data[i] >> 4) == 6)	 //allways wind info
@@ -527,6 +541,13 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
     Serial.print(data[i] & 0x0F, HEX);
   }
   Serial.print( decoder.checkSum() ? "\tOK" : "\tFAIL" );
+  Serial.print(" ");
+  Serial.print(lastZeroBitLength);
+  Serial.print(" ");
+  Serial.print(lastOneBitLength);
+  Serial.print(" ");
+  Serial.print(lastLeaderBitLength);
+  Serial.print(" ");
   Serial.print( "\n" );
 
   decoder.resetDecoder();
@@ -777,7 +798,7 @@ void SendCommand(byte *frame, byte sync) {
 
 void setup () {
 
-  wdt_enable(WDTO_8S);
+  //wdt_enable(WDTO_8S);
 
   Serial.begin(9600);
   Serial.print("[WR]\n");
@@ -852,26 +873,29 @@ void loop () {
   if (Serial.available()) {
     processMessage();
   }
-  //cli();
+  cli();
   // ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
   //cbi( ACSR, ACBG ); // disable
-  cbi( ACSR, ACI ); // disable
-  cbi( ACSR, ACIE ); // disable analog interrupt
+  //  cbi( ACSR, ACI ); // disable
+  //  cbi( ACSR, ACIE ); // disable analog interrupt
 
   word p = pulse;
   pulse = 0;
 
-  //sei();
+  sei();
   //sbi( ACSR, ACBG ); // enable
-  sbi( ACSR, ACI ); // enable
-  sbi( ACSR, ACIE ); // enable analog interrupt
+  //  sbi( ACSR, ACI ); // enable
+  //  sbi( ACSR, ACIE ); // enable analog interrupt
 
   if (p != 0) {
     //Serial.print(".");
     pulseActivity = true;
-    
+
     if (orscV2.nextPulse(p))
+    {
+      Serial.print("OSV1?");
       reportSerial("OSV2", orscV2);
+    }
     if (ventus.nextPulse(p))
     {
       //Serial.print(p);
@@ -1032,9 +1056,14 @@ void loop () {
       }
     } //ventus
     if (fineOffset.nextPulse(p))
+    {
+      Serial.print("fineOffset?");
       reportSerial("FINE", fineOffset);
+    }
     if (mandolyn.nextPulse(p))
+    { Serial.print("mand?");
       reportSerial("MAND", mandolyn);
+    }
   } //p!=0
 
   nonInterruptLoopCount++;
@@ -1064,27 +1093,29 @@ void loop () {
   if ( shortLoopCount > 800000  )  //show clock every short loop
   {
     Serial.print(".");
-    Serial.println(now() - oldClockTime);
+    Serial.print(now() - oldClockTime);
     oldClockTime = now();
     shortLoopCount = 0;
     if (pulseActivity == true)
     {
-       Serial.print("*");
-       Serial.print(" ");
-       pulseActivity = false;
+      Serial.print(" ");
+      Serial.print("*");
+      pulseActivity = false;
     }
+    Serial.println(" ");
   }
   if ( second() == 0 )  //show shortLoopCount every minute
   {
     Serial.print(",");
-    Serial.println(shortLoopCount);
+    Serial.print(shortLoopCount);
     delay(1000);
     if (pulseActivity == true)
     {
-       Serial.print("*");
-       Serial.print(" ");
-       pulseActivity = false;
+      Serial.print(" ");
+      Serial.print("*");
+      pulseActivity = false;
     }
+    Serial.println(" ");
   }
   if ( (timeDiff > 300) || (timeDiff < -300) || nonInterruptLoopCount > 1600000000  )  //last read time and current time should not be more than 5 min apart
   {
@@ -1102,9 +1133,9 @@ void loop () {
     digitalWrite(ResetSuppressPin, 0);  // set the ResetSuppressPin OFF: reset the arduino
   }
 
-  //delay(1);
+  //delay(10);
 
   //tell the watchdog all is well
-  wdt_reset();
+  //wdt_reset();
 } //loop
 
