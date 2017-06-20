@@ -819,7 +819,8 @@ void setup () {
   digitalWrite(13 + PORT, 1); // enable pull-up
 
   // use analog comparator to switch at 1.1V bandgap transition
-  ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
+  //ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
+  ACSR =  _BV(ACI) | _BV(ACIE);
 
   // set ADC mux to the proper port
   ADCSRA &= ~ bit(ADEN);
@@ -914,7 +915,7 @@ void loop () {
         {
           minSec = (minute() * 60 + second()) ;
           windAverageKmh = float(windAverage) / 5.0 * 3.6 * 2.5; //personal scaling // 0.2 m/s to km/h, compensate 3* for alt
-          windGustKmh = float(windGust) / 5.0 * 3.6 * 2.5;  // 0.2 m/s to km/h, compensate 3* for alt )
+          windGustKmh = float(windGust) / 5.0 * 3.6 * 2.0;  // 0.2 m/s to km/h, compensate 3* for alt )
           Serial.println();
           digitalClockDisplay();
           Serial.print("Average: ");
@@ -1068,6 +1069,15 @@ void loop () {
 
   nonInterruptLoopCount++;
   shortLoopCount++;
+  if ( (hour() == 18) and (minute() == 00) and (second() < 5) )
+  {
+    Serial.println("Retract"); // Somfy sun shade
+    BuildFrame(frame, HAUT);
+    SendCommand(frame, 2);
+    for (int i = 0; i < 2; i++) {
+      SendCommand(frame, 7);
+    }
+  }
 
   if ( minSec == 0 )  //after a reset, wait for first weather data
   {
