@@ -1008,7 +1008,7 @@ void loop () {
           }
         }
 
-        if ( gustPeakKmh > 44 )       //km/h trigger
+        if ( gustPeakKmh > 50 )       //km/h trigger
         {
           if ( retractTimeoutTime < now() )
           {
