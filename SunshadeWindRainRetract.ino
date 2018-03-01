@@ -32,10 +32,18 @@
 
 int minSec = 0;
 
-#define PORT 2
-#define RAINSENSOR  A6
-#define ResetSuppressPin 12
+//WEATHERRFPORT:
+//ref voltage pin D6 AIN0 (comparator +) pin 10
+//input voltage pin D7 AIN1 (comparator -) pin 11
+// or A0 pin 23 via ADC mux
+//#define SOMFYRFOUT 3 // DigitalPin for Somfy
 
+#define WEATHERRFPORT 1 //1=A0
+#define RAINSENSOR  2 //2=D2 A5-analog? 
+#define RESETSUPPRESSPIN 12
+
+
+#define SOMFYRFOUT 3 // DigitalPin for Somfy
 #define SYMBOL 640
 #define HAUT 0x2
 #define STOP 0x1
@@ -44,10 +52,10 @@ int minSec = 0;
 #define EEPROM_ADDRESS 0
 #define CLOCKEEPROMADDRESS 12
 
-#define REMOTE 0x121300    //<-- Change it!
+#define REMOTE 0x021400    //<-- Change it!
 
 
-unsigned int newRollingCode = 101;       //<-- Change it!
+unsigned int newRollingCode = 106;       //<-- Change it!
 unsigned int rollingCode = 0;
 byte frame[7];
 byte checksum;
@@ -72,6 +80,7 @@ unsigned long shortLoopCount = 0;
 int lastZeroBitLength = 0;
 int lastOneBitLength = 0;
 int lastLeaderBitLength = 0;
+bool batteryLow = false;
 
 class DecodeOOK {
   protected:
@@ -466,25 +475,27 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
 
     if (i == 1)
     {
-      if ((data[i] >> 4) == 6)	 //allways wind info
+      if ( ((data[i] >> 4) == 6)  || ((data[i] >> 4) == 0x0E) )	 //allways wind info 
       {
-        if ( data[i] != 0x6C )  //6E or 6F     not 6C
+        if ( (data[i] != 0x6C ) && (data[i] != 0xAC)  )  //6E or 6F     not 6C
         {
-          windDataType = data[i];
+          windDataType = data[i] & 0x7F;
           if ((windDataType & 0x6E) == 0x6E)  //6E or 6F
           {
             windDirection = ((data[i] & 0x01) );   //      0           0      8  bit 0 (0 or 1)  9 bits long
           }
-        }
-        else
-        {
-          windDataType = 0;
         }
       }
       else
       {
         windDataType = 0;
       }
+      //check battery
+      //n2 == Ex (bit 8 = nibble 1xxx)
+      if ((data[i] & 0xA0) == 0xA0)
+      {
+         batteryLow = true;
+      }       
     }
     if (i == 2)
     {
@@ -537,18 +548,24 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
       }
     } //for
 
-    Serial.print(data[i] >> 4, HEX);
-    Serial.print(data[i] & 0x0F, HEX);
+    //see all packages' hex dump
+    //Serial.print(data[i] >> 4, HEX);
+    //Serial.print(data[i] & 0x0F, HEX);
+
   }
-  Serial.print( decoder.checkSum() ? "\tOK" : "\tFAIL" );
-  Serial.print(" ");
-  Serial.print(lastZeroBitLength);
-  Serial.print(" ");
-  Serial.print(lastOneBitLength);
-  Serial.print(" ");
-  Serial.print(lastLeaderBitLength);
-  Serial.print(" ");
-  Serial.print( "\n" );
+  
+  //show any packet has been received
+  Serial.print("_");
+  
+  //Serial.print( decoder.checkSum() ? "\tOK" : "\tFAIL" );
+  //Serial.print(" ");
+  //Serial.print(lastZeroBitLength);
+  //Serial.print(" ");
+  //Serial.print(lastOneBitLength);
+  //Serial.print(" ");
+  //Serial.print(lastLeaderBitLength);
+  //Serial.print(" ");
+  //Serial.print( "\n" );
 
   decoder.resetDecoder();
 }  // reportSerial
@@ -612,9 +629,9 @@ void processMessage() {
     controlCode = Serial.parseInt();
     if ( controlCode == 101 )
     {
-      pinMode(ResetSuppressPin, INPUT);  //pulling the resetpin down is not a good idea....
-      digitalWrite(ResetSuppressPin, 0); // set the ResetSuppressPin OFF
-      Serial.print("ResetSuppressPin off\n");
+      pinMode(RESETSUPPRESSPIN, INPUT);  //pulling the resetpin down is not a good idea....
+      digitalWrite(RESETSUPPRESSPIN, 0); // set the RESETSUPPRESSPIN OFF
+      Serial.print("RESETSUPPRESSPIN off\n");
       Serial.println(controlCode);
     }
   }
@@ -674,16 +691,6 @@ void processMessage() {
     - you can also send a HEX number directly for any weird command you (0x9 for the sun and wind detector for instance)
 */
 
-#define PORT_RF 3 // DigitalPin for Somfy
-
-#define SYMBOL 640
-#define HAUT 0x2
-#define STOP 0x1
-#define BAS 0x4
-#define PROG 0x8
-#define EEPROM_ADDRESS 0
-
-#define REMOTE 0x121300    //<-- Change it!
 
 
 void BuildFrame(byte *frame, byte button) {
@@ -740,6 +747,7 @@ void BuildFrame(byte *frame, byte button) {
   }
   Serial.println("");
   Serial.print("Rolling Code  : ");
+  //code = 101; //temp to change remote?
   Serial.println(code);
   EEPROM.put(EEPROM_ADDRESS, code + 1); //  We store the value of the rolling code in the
   // EEPROM. It should take up to 2 adresses but the
@@ -749,44 +757,44 @@ void BuildFrame(byte *frame, byte button) {
 void SendCommand(byte *frame, byte sync) {
   if (sync == 2) { // Only with the first frame.
     //Wake-up pulse & Silence
-    digitalWrite(PORT_RF, 1);
+    digitalWrite(SOMFYRFOUT, 1);
     delayMicroseconds(9415);
-    digitalWrite(PORT_RF, 0);
+    digitalWrite(SOMFYRFOUT, 0);
     delayMicroseconds(89565);
   }
 
   // Hardware sync: two sync for the first frame, seven for the following ones.
   for (int i = 0; i < sync; i++) {
-    digitalWrite(PORT_RF, 1);
+    digitalWrite(SOMFYRFOUT, 1);
     delayMicroseconds(4 * SYMBOL);
-    digitalWrite(PORT_RF, 0);
+    digitalWrite(SOMFYRFOUT, 0);
     delayMicroseconds(4 * SYMBOL);
   }
 
   // Software sync
-  digitalWrite(PORT_RF, 1);
+  digitalWrite(SOMFYRFOUT, 1);
   delayMicroseconds(4550);
-  digitalWrite(PORT_RF, 0);
+  digitalWrite(SOMFYRFOUT, 0);
   delayMicroseconds(SYMBOL);
 
 
   //Data: bits are sent one by one, starting with the MSB.
   for (byte i = 0; i < 56; i++) {
     if (((frame[i / 8] >> (7 - (i % 8))) & 1) == 1) {
-      digitalWrite(PORT_RF, 0);
+      digitalWrite(SOMFYRFOUT, 0);
       delayMicroseconds(SYMBOL);
-      digitalWrite(PORT_RF, 1);
+      digitalWrite(SOMFYRFOUT, 1);
       delayMicroseconds(SYMBOL);
     }
     else {
-      digitalWrite(PORT_RF, 1);
+      digitalWrite(SOMFYRFOUT, 1);
       delayMicroseconds(SYMBOL);
-      digitalWrite(PORT_RF, 0);
+      digitalWrite(SOMFYRFOUT, 0);
       delayMicroseconds(SYMBOL);
     }
   }
 
-  digitalWrite(PORT_RF, 0);
+  digitalWrite(SOMFYRFOUT, 0);
   delayMicroseconds(30415); // Inter-frame silence
 }
 
@@ -800,11 +808,12 @@ void setup () {
 
   //wdt_enable(WDTO_8S);
 
-  Serial.begin(9600);
+  //Serial.begin(9600);
+  Serial.begin(115200);
   Serial.print("[WR]\n");
 
-  digitalWrite(ResetSuppressPin, 1);// set the ResetSuppressPin ON
-  pinMode(ResetSuppressPin, OUTPUT);
+  digitalWrite(RESETSUPPRESSPIN, 1);// set the RESETSUPPRESSPIN ON
+  pinMode(RESETSUPPRESSPIN, OUTPUT);
 
   //Get the time data from the EEPROM at position 'CLOCKEEPROMADDRESS'
   unsigned long pctime;
@@ -815,17 +824,18 @@ void setup () {
   //Serial.println(".");
 
 #if !defined(__AVR_ATmega1280__)
-  pinMode(13 + PORT, INPUT);	// use the AIO pin
-  digitalWrite(13 + PORT, 1); // enable pull-up
+  pinMode(13 + WEATHERRFPORT, INPUT);	// use the AIO pin
+  digitalWrite(13 + WEATHERRFPORT, 1); // enable pull-up
 
   // use analog comparator to switch at 1.1V bandgap transition
-  //ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
-  ACSR =  _BV(ACI) | _BV(ACIE);
+  ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
+  // use analog comparator to switch at potmeter set threshold 
+  //ACSR =  _BV(ACI) | _BV(ACIE);
 
   // set ADC mux to the proper port
   ADCSRA &= ~ bit(ADEN);
   ADCSRB |= bit(ACME);
-  ADMUX = PORT - 1;
+  ADMUX = WEATHERRFPORT - 1;
 #else
 
   //--not used --
@@ -845,8 +855,8 @@ void setup () {
   pinMode(13, OUTPUT);
 
   //Somfy
-  pinMode(PORT_RF, OUTPUT);  //Pin  an output
-  digitalWrite(PORT_RF, 0); // Pin  LOW
+  pinMode(SOMFYRFOUT, OUTPUT);  //Pin  an output
+  digitalWrite(SOMFYRFOUT, 0); // Pin  LOW
 
   if (EEPROM.get(EEPROM_ADDRESS, rollingCode) < newRollingCode) {
     EEPROM.put(EEPROM_ADDRESS, newRollingCode);
@@ -903,7 +913,7 @@ void loop () {
       //Serial.print(" ");
       reportSerial("VENT", ventus);
       //Serial.print(".");
-      if (minSec != (minute() * 60 + second()) )  //only proces once a second
+      //if (minSec != (minute() * 60 + second()) )  //only proces once a second
       {
         minSec = (minute() * 60 + second()) ;
         //		 if (ventus1=0)
@@ -911,13 +921,15 @@ void loop () {
         //reportSerial("VENT", ventus);
         //			ventus1=ventus;
 
-        if ( (windAverage != windAverageOld) || (windGust != windGustOld) )  //only proces changed data, once a second
+        //if ( (windAverage != windAverageOld) || (windGust != windGustOld) )  //only proces changed data, once a second
         {
           minSec = (minute() * 60 + second()) ;
           windAverageKmh = float(windAverage) / 5.0 * 3.6 * 2.5; //personal scaling // 0.2 m/s to km/h, compensate 3* for alt
           windGustKmh = float(windGust) / 5.0 * 3.6 * 2.0;  // 0.2 m/s to km/h, compensate 3* for alt )
-          Serial.println();
+          //Serial.println();
+          Serial.print("@ ");
           digitalClockDisplay();
+          /*
           Serial.print("Average: ");
           if ( windAverageKmh < 10)
           {
@@ -931,6 +943,7 @@ void loop () {
             Serial.print(' ');
           }
           Serial.print(windGustKmh);
+          */
         }
         // Average Peak
         if ( averagePeakKmh < windAverageKmh)
@@ -943,14 +956,16 @@ void loop () {
           averagePeakKmh -= 1; // start lowering peak value to find a new, lower peak
         }
 
-        if ( (windAverage != windAverageOld) || (windGust != windGustOld) )
+        //if ( (windAverage != windAverageOld) || (windGust != windGustOld) )
         {
-          Serial.print("   Average Peak: ");
+          Serial.print(" Average Peak: ");
+          /*
           if ( averagePeakKmh < 10)
           {
             Serial.print(' ');
           }
           Serial.print(averagePeakKmh);
+          */
           /*
             1. Neem de windsnelheid in km/h, en trek daar de wortel uit.
             2.Is de uitkomst kleiner of gelijk aan 7, trek er dan 1 van af.
@@ -966,9 +981,14 @@ void loop () {
           {
             averagePeakBft++;
           }
-          Serial.print(" = ");
+          if ( averagePeakBft < 0 || averagePeakBft > 12 )
+          {
+            averagePeakBft = 0;
+          }
+          //Serial.print(" = ");
           Serial.print(averagePeakBft);
           Serial.print("_Bft.");
+          //Serial.println();
 
           //Gust Peak
 
@@ -978,7 +998,7 @@ void loop () {
             gustPeakKmhTimeStored = now();
           }
           Serial.print(" Gust Peak: ");
-          Serial.print(gustPeakKmh);
+          //Serial.print(gustPeakKmh);
 
           long gustPeakBft = sqrt(gustPeakKmh);
           if (gustPeakBft <= 7)
@@ -989,7 +1009,11 @@ void loop () {
           {
             gustPeakBft++;
           }
-          Serial.print(" = ");
+          if ( gustPeakBft < 0 || gustPeakBft > 12 )
+          {
+            gustPeakBft = 0;
+          }
+          //Serial.print(" = ");
           Serial.print(gustPeakBft);
           Serial.print("_Bft.");
           Serial.print(" From: ");
@@ -1004,7 +1028,7 @@ void loop () {
           Serial.print(windDirection);
           if ( gustPeakKmh > 44 )       //km/h trigger
           {
-            Serial.print(" Too windy ");
+            Serial.print(" Too_windy ");
           }
         }
 
@@ -1026,11 +1050,11 @@ void loop () {
           gustPeakKmh -= 1; // start lowering peak value to find a new, lower peak
         }
 
-        if ( (windAverage != windAverageOld) || (windGust != windGustOld) )
+        //if ( (windAverage != windAverageOld) || (windGust != windGustOld) )
         {
           windAverageOld = windAverage;
           windGustOld = windGust;
-          if ( (!digitalRead(2))  )
+          if ( (!digitalRead(RAINSENSOR))  )
           {
             Serial.print(" Raining ");
           }
@@ -1038,7 +1062,7 @@ void loop () {
           {
             Serial.print(" Dry ");
           }
-          Serial.println( " " );
+          Serial.print( " " );
         }
       }
       if ( (!digitalRead(2))  )
@@ -1055,6 +1079,13 @@ void loop () {
           retractTimeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
         }
       }
+      //end of datastring
+      if (batteryLow)
+      {
+         Serial.print( " Battery_Low" );
+      }
+      Serial.println( " $" );
+
     } //ventus
     if (fineOffset.nextPulse(p))
     {
@@ -1102,30 +1133,30 @@ void loop () {
 
   if ( shortLoopCount > 800000  )  //show clock every short loop
   {
-    Serial.print(".");
-    Serial.print(now() - oldClockTime);
+    //Serial.print(".");
+    //Serial.print(now() - oldClockTime);
     oldClockTime = now();
     shortLoopCount = 0;
     if (pulseActivity == true)
     {
-      Serial.print(" ");
-      Serial.print("*");
+      //Serial.print(" ");
+      //Serial.print("*");
       pulseActivity = false;
     }
-    Serial.println(" ");
+    //Serial.println(" ");
   }
   if ( second() == 0 )  //show shortLoopCount every minute
   {
-    Serial.print(",");
-    Serial.print(shortLoopCount);
+    //Serial.print(",");
+    //Serial.print(shortLoopCount);
     delay(1000);
     if (pulseActivity == true)
     {
-      Serial.print(" ");
-      Serial.print("*");
+      //Serial.print(" ");
+      //Serial.print("*");
       pulseActivity = false;
     }
-    Serial.println(" ");
+    //Serial.println(" ");
   }
   if ( (timeDiff > 300) || (timeDiff < -300) || nonInterruptLoopCount > 1600000000  )  //last read time and current time should not be more than 5 min apart
   {
@@ -1139,8 +1170,8 @@ void loop () {
     Serial.println(minute() * 60 + second());
     delay(100);
     //reset
-    pinMode(ResetSuppressPin, OUTPUT);
-    digitalWrite(ResetSuppressPin, 0);  // set the ResetSuppressPin OFF: reset the arduino
+    pinMode(RESETSUPPRESSPIN, OUTPUT);
+    digitalWrite(RESETSUPPRESSPIN, 0);  // set the RESETSUPPRESSPIN OFF: reset the arduino
   }
 
   //delay(10);
