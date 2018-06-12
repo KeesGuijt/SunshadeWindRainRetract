@@ -40,6 +40,8 @@ int minSec = 0;
 
 #define WEATHERRFPORT 1 //1=A0
 #define RAINSENSOR  2 //2=D2 A5-analog? 
+#define RAINTHERSHOLD 125  // 0..255 low = dry, gigh = rain
+#define RAINSENSORANLG A5 //2=D2 A5-analog? 
 #define RESETSUPPRESSPIN 12
 
 
@@ -1054,7 +1056,8 @@ void loop () {
         {
           windAverageOld = windAverage;
           windGustOld = windGust;
-          if ( (!digitalRead(RAINSENSOR))  )
+          //if ( (!digitalRead(RAINSENSOR))  )
+          if ( ( analogRead(RAINSENSORANLG) > RAINTHERSHOLD) )
           {
             Serial.print(" Raining ");
           }
@@ -1062,10 +1065,12 @@ void loop () {
           {
             Serial.print(" Dry ");
           }
+          Serial.print( analogRead(RAINSENSORANLG) );
           Serial.print( " " );
         }
       }
-      if ( (!digitalRead(2))  )
+      //if ( (!digitalRead(RAINSENSOR))  )
+      if ( ( analogRead(RAINSENSORANLG) > RAINTHERSHOLD) )
       {
         //Serial.print(" Raining ");
         if ( retractTimeoutTime < now() )
