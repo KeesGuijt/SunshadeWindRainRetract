@@ -33,19 +33,20 @@
 int minSec = 0;
 
 //WEATHERRFPORT:
-//ref voltage pin D6 AIN0 (comparator +) pin 10
-//input voltage pin D7 AIN1 (comparator -) pin 11
-// or A0 pin 23 via ADC mux
-//#define SOMFYRFOUT 3 // DigitalPin for Somfy
+//ref voltage pin D6 AIN0 (comparator +) pin 26
+//input voltage pin D7 AIN1 (comparator -) pin 19
+// or A0 pin 26 via ADC mux
 
 #define WEATHERRFPORT 1 //1=A0
-#define RAINSENSOR  2 //2=D2 A5-analog? 
-#define RAINTHERSHOLD 125  // 0..255 low = dry, gigh = rain
-#define RAINSENSORANLG A5 //2=D2 A5-analog? 
-#define RESETSUPPRESSPIN 12
 
+#define WEATHERRFPORTDIG 2 //2=D2
 
-#define SOMFYRFOUT 3 // DigitalPin for Somfy
+#define RAINSENSOR 6  //6=D6 
+#define RAINTHRESHOLD 800  // 0..1023 low = rain, high = dry
+#define RAINSENSORANLG A5  //6=D6 A5-analog? 
+#define RESETSUPPRESSPIN 12  //D12
+
+#define SOMFYRFOUT 3 // D3 DigitalPin for Somfy
 #define SYMBOL 640
 #define HAUT 0x2
 #define STOP 0x1
@@ -446,7 +447,10 @@ volatile word pulse;
 
 void ext_int_1(void) {
 #else
-ISR(ANALOG_COMP_vect) {
+//analog
+//ISR(ANALOG_COMP_vect) {
+//digital
+void weatherRfDig(void) {
 #endif
   static word last;
   // determine the pulse length in microseconds, for either polarity
@@ -477,27 +481,29 @@ void reportSerial (const char* s, class DecodeOOK& decoder) {
 
     if (i == 1)
     {
-      if ( ((data[i] >> 4) == 6)  || ((data[i] >> 4) == 0x0E) )	 //allways wind info 
+      if ( (data[i] == 0x68) || (data[i] == 0x6E) || (data[i] == 0x6F) || (data[i] == 0xE8) || (data[i] == 0xEE) ||  (data[i] == 0xEF) ) //68,6E,6F,E8,EE,EF	allways wind info
       {
-        if ( (data[i] != 0x6C ) && (data[i] != 0xAC)  )  //6E or 6F     not 6C
+	      //check battery
+	      //n2 == Ex (bit 8 = nibble 1xxx)
+	      if ((data[i] & 0x80) == 0x80)
+	      {
+	         batteryLow = true;
+	      }       
+	      else
+	      {
+	         batteryLow = false;
+	      }   
+	      windDataType = data[i] & 0x7F; //remove battery low bit
+        if ((windDataType & 0x6E) == 0x6E)  //6E or 6F
         {
-          windDataType = data[i] & 0x7F;
-          if ((windDataType & 0x6E) == 0x6E)  //6E or 6F
-          {
-            windDirection = ((data[i] & 0x01) );   //      0           0      8  bit 0 (0 or 1)  9 bits long
-          }
+           windDirection = ((data[i] & 0x01) );   //      0           0      8  bit 0 (0 or 1)  9 bits long
         }
-      }
+	    }	
       else
       {
         windDataType = 0;
       }
-      //check battery
-      //n2 == Ex (bit 8 = nibble 1xxx)
-      if ((data[i] & 0xA0) == 0xA0)
-      {
-         batteryLow = true;
-      }       
+    
     }
     if (i == 2)
     {
@@ -825,19 +831,29 @@ void setup () {
   digitalClockDisplay();
   //Serial.println(".");
 
-#if !defined(__AVR_ATmega1280__)
-  pinMode(13 + WEATHERRFPORT, INPUT);	// use the AIO pin
-  digitalWrite(13 + WEATHERRFPORT, 1); // enable pull-up
+  // print out the value you read:
+  //Serial.println(sensorValue);
 
+#if !defined(__AVR_ATmega1280__)
+  //pinMode(13 + WEATHERRFPORT, INPUT);	// use the AIO pin
+  //digitalWrite(13 + WEATHERRFPORT, 1); // enable pull-up
+
+  //digital: analog is input, no pull up
+  pinMode(WEATHERRFPORT, INPUT);
+  
   // use analog comparator to switch at 1.1V bandgap transition
-  ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
+  //ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
   // use analog comparator to switch at potmeter set threshold 
   //ACSR =  _BV(ACI) | _BV(ACIE);
+  // use digital interrupt on D2
+  //pinMode(WEATHERRFPORTDIG, INPUT_PULLUP);
+  pinMode(WEATHERRFPORTDIG, INPUT);
+  attachInterrupt(digitalPinToInterrupt(WEATHERRFPORTDIG), weatherRfDig, CHANGE);
 
-  // set ADC mux to the proper port
-  ADCSRA &= ~ bit(ADEN);
-  ADCSRB |= bit(ACME);
-  ADMUX = WEATHERRFPORT - 1;
+  //analog:  set ADC mux to the proper port
+  //ADCSRA &= ~ bit(ADEN);
+  //ADCSRB |= bit(ACME);
+  //ADMUX = WEATHERRFPORT - 1;
 #else
 
   //--not used --
@@ -852,9 +868,11 @@ void setup () {
   //Serial.begin(9600);
   //while (!Serial) ; // Needed for Leonardo only
 
+//?
   //configure pin2 as an input and enable the internal pull-up resistor
-  pinMode(2, INPUT_PULLUP);
-  pinMode(13, OUTPUT);
+  //pinMode(2, INPUT_PULLUP);
+  //pinMode(13, OUTPUT);
+//?
 
   //Somfy
   pinMode(SOMFYRFOUT, OUTPUT);  //Pin  an output
@@ -886,6 +904,9 @@ void loop () {
   if (Serial.available()) {
     processMessage();
   }
+  noInterrupts();
+  // critical, time-sensitive code here
+ 
   cli();
   // ACSR = _BV(ACBG) | _BV(ACI) | _BV(ACIE);
   //cbi( ACSR, ACBG ); // disable
@@ -895,6 +916,7 @@ void loop () {
   word p = pulse;
   pulse = 0;
 
+  interrupts();
   sei();
   //sbi( ACSR, ACBG ); // enable
   //  sbi( ACSR, ACI ); // enable
@@ -1057,7 +1079,10 @@ void loop () {
           windAverageOld = windAverage;
           windGustOld = windGust;
           //if ( (!digitalRead(RAINSENSOR))  )
-          if ( ( analogRead(RAINSENSORANLG) > RAINTHERSHOLD) )
+          //analog, digital pin no pullup
+          //pinMode(RAINSENSOR, INPUT);
+          
+          if ( ( analogRead(RAINSENSORANLG) < RAINTHRESHOLD) )
           {
             Serial.print(" Raining ");
           }
@@ -1070,7 +1095,7 @@ void loop () {
         }
       }
       //if ( (!digitalRead(RAINSENSOR))  )
-      if ( ( analogRead(RAINSENSORANLG) > RAINTHERSHOLD) )
+      if ( ( analogRead(RAINSENSORANLG) < RAINTHRESHOLD) )
       {
         //Serial.print(" Raining ");
         if ( retractTimeoutTime < now() )
