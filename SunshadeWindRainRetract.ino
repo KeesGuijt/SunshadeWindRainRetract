@@ -1095,6 +1095,7 @@ void loop () {
         }
       }
       //if ( (!digitalRead(RAINSENSOR))  )
+/*      
       if ( ( analogRead(RAINSENSORANLG) < RAINTHRESHOLD) )
       {
         //Serial.print(" Raining ");
@@ -1109,6 +1110,7 @@ void loop () {
           retractTimeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
         }
       }
+*/
       //end of datastring
       if (batteryLow)
       {
@@ -1127,6 +1129,21 @@ void loop () {
       reportSerial("MAND", mandolyn);
     }
   } //p!=0
+
+  if ( ( analogRead(RAINSENSORANLG) < RAINTHRESHOLD) )
+  {
+    //Serial.print(" Raining ");
+    if ( retractTimeoutTime < now() )
+    {
+      Serial.println(" Retracting (Rain)....");
+      BuildFrame(frame, HAUT);   // Somfy is a French company, after all.
+      SendCommand(frame, 2);
+      for (int i = 0; i < 2; i++) {
+        SendCommand(frame, 7);
+      }
+      retractTimeoutTime = now() + (15 * 60); //15 minutes to seconds, Somfy command can only be sent once in 15 min
+    }
+  }
 
   nonInterruptLoopCount++;
   shortLoopCount++;
